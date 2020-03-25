@@ -1,0 +1,413 @@
+---
+title: "Tweet"
+author: "Luyao Li"
+date: "3/6/2020"
+output: html_document
+---
+
+```{r}
+library(sqldf)
+# Load libraries
+#install.packages("streamR")
+#install.packages("tm")
+#install.packages("SnowballC")
+#install.packages("wordcloud")
+#install.packages("wordcloud2")
+#install.packages("tidytext")
+#install.packages("reshape2")
+#install.packages("gridExtra")
+#install.packages("corrplot")
+#install.packages("ggmap")
+#install.packages("igraph")
+#install.packages("leaflet")
+#install.packages("knitr")
+library(streamR)
+library(tidyverse)
+library(scales)
+library(tm)
+library(SnowballC)
+library(wordcloud)
+library(wordcloud2)
+library(tidytext)
+library(reshape2)
+library(gridExtra)
+library(corrplot)
+library(ggmap)
+library(igraph)
+library(leaflet)
+library(knitr)
+library(tidyr)
+#install.packages("nnet")
+library(nnet)
+```
+
+```{r}
+setwd("C:/Users/Luyao Li/Desktop")
+```
+
+```{r}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load_gh("trinker/lexicon")
+```
+
+```{r}
+tweet_data <- read.csv("TweetsNBA.csv")
+summary(tweet_data)
+```
+
+```{r}
+tweet_data <- tweet_data %>%
+  rename(sentence_id = X)
+```
+
+```{r}
+head(tweet_data)
+```
+
+```{r}
+tweet_df <- tweet_data %>%
+  select(created_at) %>%
+  mutate(created_at=substr(created_at, 12, 16)) %>%
+  count(created_at)
+
+#table <- tweet_data %>%
+  #count(word, sentiment, sort=TRUE)
+
+tweet_df %>%
+  ggplot(aes(x = as.numeric(as.factor(created_at)), y = n)) +
+  geom_col(show.legend = FALSE, color = "yellow", fill = "steelblue3") +
+  #facet_wrap(~sentiment, scales = "free_y") +
+  ggtitle("Tweets Over Time") + 
+  labs(y = "Count",
+       x = "UCT time (hh:mm)")+
+  scale_x_continuous(breaks=c(1,5,10,15,20,
+                              25,30,35,40,45),
+                     labels=c("01:13","01:18","01:23","01:28","01:33",
+                              "01:38","01:43","01:48","01:53","01:58")) +
+  labs(fill="Frequency")
+
+```
+
+```{r}
+tweet_data <- tweet_data %>%
+  mutate_at(vars(text), as.character) %>%
+  mutate_at(vars(lang), as.character) #%>%
+  #mutate()
+```
+
+```{r}
+head(tweet_data)
+```
+
+```{r}
+en_tweet_data <- tweet_data %>% filter(lang == "en")
+head(en_tweet_data)
+```
+
+```{r}
+words <- tweet_data %>%  
+  unnest_tokens(word, text) %>%
+  select(word)
+```
+
+```{r}
+words
+```
+
+```{r}
+# #F8766D
+# #00BFC4
+words %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort=TRUE) %>%
+  acast(word ~ sentiment, value.var="n", fill=0) %>%
+  comparison.cloud(colors=c("#ed2c1f", "#05b5fa", random.order = TRUE), max.words=200)
+```
+
+```{r}
+table_a <- words %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort=TRUE)
+```
+
+```{r}
+head(table_a)
+```
+
+```{r}
+table_a %>%
+  group_by(sentiment) %>%
+  top_n(10) %>%
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(y = "Contribution to sentiment",
+       x = NULL) +
+  coord_flip()
+```
+
+
+```{r}
+#install.packages("textdata")
+library(textdata)
+
+nrc_sentiment <- words %>%
+  inner_join(get_sentiments("nrc")) %>%
+  count(word, sentiment, sort = TRUE)
+head(nrc_sentiment)
+```
+
+```{r}
+# Frequency of each sentiment
+ggplot(data = nrc_sentiment, aes(x=reorder(sentiment, n, sum), y=n)) +
+  geom_bar(stat="identity", aes(fill=sentiment), show.legend=FALSE) +
+  labs(x="Sentiment", y="Frequency") +
+  theme_bw() +
+  coord_flip()
+```
+
+
+```{r}
+nrc_sentiment %>%
+  group_by(sentiment) %>%
+  summarise(word_count = n()) %>%
+  ungroup() %>%
+  mutate(sentiment = reorder(sentiment, word_count)) %>%
+  ggplot(aes(sentiment, word_count, fill = -word_count)) +
+  geom_col() +
+  guides(fill = FALSE) +
+  theme_minimal() + theme_lyrics() +
+  labs(x = NULL, y = "Word Count") +
+  ggtitle("Tweet Words NRC Sentiment Totals") +
+  coord_flip()
+```
+
+```{r}
+# Top 10 frequent terms for each sentiment
+nrc_sentiment %>%
+  group_by(sentiment) %>%
+  arrange(desc(n)) %>%
+  slice(1:8) %>%
+  ggplot(aes(x=reorder(word, n), y=n)) +
+  geom_col(aes(fill=sentiment), show.legend=FALSE) +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle=45, hjust=1)) +
+  facet_wrap(~sentiment, scales="free_x") +
+  labs(y="Frequency", x="Words")
+  #coord_flip() 
+```
+
+```{r}
+library(ggrepel)
+
+words_1 <- nrc_sentiment %>%
+  group_by(sentiment) %>%
+  #count(word, sort = TRUE) %>%
+  arrange(desc(n)) %>%
+  slice(1:8) %>%
+  ungroup()
+```
+
+```{r}
+words_1
+```
+
+```{r}
+theme_lyrics <- function(aticks = element_blank(),
+                         pgminor = element_blank(),
+                         lt = element_blank(),
+                         lp = "none")
+{
+  theme(plot.title = element_text(hjust = 0.5), #Center the title
+        axis.ticks = aticks, #Set axis ticks to on or off
+        panel.grid.minor = pgminor, #Turn the minor grid lines on or off
+        legend.title = lt, #Turn the legend title on or off
+        legend.position = lp) #Turn the legend on or off
+}
+
+words_1 %>%
+  ggplot(aes(word, 1, label = word, fill = sentiment)) +
+  geom_point(color = "white") +
+  geom_label_repel(force = 1, nudge_y = 0.5,
+                   direction = "y",
+                   box.padding = 0.04,
+                   segment.color = "white",
+                   size = 3) +
+  facet_grid(~sentiment) +
+  theme_lyrics() +
+  theme(axis.text.y = element_blank(), axis.line.x = element_blank(),
+        axis.title.x = element_blank(), axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        panel.grid = element_blank(), panel.background = element_blank(),
+        panel.border = element_rect("lightgray", fill = NA),
+        strip.text.x = element_text(size = 9)) +
+  xlab(NULL) + ylab(NULL) +
+  ggtitle("Tweet Words by NRC Sentiment") +
+  coord_flip()
+```
+
+```{r}
+text_winning <- sqldf("SELECT * 
+                        FROM tweet_sentence_data
+                        WHERE text LIKE '%winning%' ", row.names=TRUE)
+```
+
+```{r}
+text_winning
+# No. 22228
+```
+
+```{r}
+# Sentiment analysis over time 
+bing_over_time <- tweet_data %>%
+  unnest_tokens(word, text) %>%
+  select(word, created_at) %>%
+  inner_join(get_sentiments("bing")) %>%
+  mutate(created_at=substr(created_at, 12, 16)) %>%
+  count(created_at, sentiment)
+
+
+nrc_over_time <- tweet_data %>%  
+  unnest_tokens(word, text) %>%
+  select(word, created_at) %>%
+  inner_join(get_sentiments("nrc")) %>%
+  mutate(created_at=substr(created_at, 12, 16)) %>%
+  count(created_at, sentiment)
+
+head(bing_over_time)
+```
+
+```{r}
+sentiment_over_time
+```
+
+```{r}
+bing_over_time %>%
+  ggplot(aes(x = as.numeric(as.factor(created_at)), y = n, fill = sentiment, colour = sentiment)) +
+  geom_col(show.legend = TRUE, color = "yellow") +
+  #facet_wrap(~sentiment, scales = "free_y") +
+  scale_fill_manual(
+    "Sentiments",
+    values = c("negative" = "red",
+            "positive"    = "#05b5fa")
+    ) +
+  ggtitle("Sentiment Over Time (BING LEXICON)") + 
+  labs(y = "Sentiment",
+       x = "UCT time (hh:mm)")+
+  scale_x_continuous(breaks=c(1,5,10,15,20,
+                              25,30,35,40,45),
+                     labels=c("01:13","01:18","01:23","01:28","01:33",
+                              "01:38","01:43","01:48","01:53","01:58")) +
+  labs(fill="Frequency")
+```
+
+```{r}
+nrc_over_time %>%
+  ggplot(aes(x=as.numeric(as.factor(created_at)), y=as.factor(sentiment))) +
+  geom_tile(aes(fill=n),  show.legend=FALSE) +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle=45, hjust=1)) +
+  ggtitle("Sentiment Over Time (NRC LEXICON)") + 
+  labs(x="UCT time (hh:mm)", y="Sentiment") +   
+  scale_fill_gradient(low="white", high="purple") +
+  scale_x_continuous(breaks=c(1,5,10,15,20,
+                              25,30,35,40,45),
+                     labels=c("01:13","01:18","01:23","01:28","01:33",
+                              "01:38","01:43","01:48","01:53","01:58")) +
+  labs(fill="Frequency")
+```
+
+```{r}
+#install.packages("sentimentr")
+library(sentimentr)
+```
+
+```{r}
+sentence_sentiment <- sentiment_by(tweet_data$text)
+```
+
+```{r}
+summary(sentence_sentiment)
+```
+
+```{r}
+qplot(sentence_sentiment$ave_sentiment, geom="histogram",binwidth=0.1, main="Sentence Sentiments")
+```
+
+```{r}
+sentence_sentiment$ave_sentiment[which(sentence_sentiment$ave_sentiment<0)] = -1
+sentence_sentiment$ave_sentiment[which(sentence_sentiment$ave_sentiment==0)] = 0
+sentence_sentiment$ave_sentiment[which(sentence_sentiment$ave_sentiment>0)] = 1
+```
+
+```{r}
+sentence_sentiment <- sentence_sentiment %>%
+  rename(sentiment = ave_sentiment)
+```
+
+```{r}
+head(sentence_sentiment)
+```
+
+```{r}
+tweet_sentence_data <- tweet_data
+tweet_sentence_data <- merge(x = tweet_sentence_data, y = sentence_sentiment[,c("word_count","sentiment")], by.x = 0, by.y = 0)
+```
+
+```{r}
+tweet_sentence_data <- tweet_sentence_data[-c(1)]
+```
+
+```{r}
+tweet_sentence_data
+```
+
+```{r}
+tweet_sentence_data <- tweet_sentence_data[order(tweet_sentence_data$sentence_id),]
+```
+
+```{r}
+rownames(tweet_sentence_data) <- NULL
+```
+
+```{r}
+head(tweet_sentence_data)
+```
+
+```{r}
+selected_data <- tweet_sentence_data %>%
+  filter(sentiment == -1 | sentiment == 1)
+```
+
+```{r}
+selected_data$sentiment[selected_data$sentiment == -1] <- 0
+```
+
+```{r}
+head(selected_data)
+```
+
+```{r}
+model <- glm(sentiment ~ statuses_count + followers_count + favourites_count + friends_count + word_count, family = binomial(), data = selected_data)
+summary(model)
+```
+
+```{r}
+tweet_sentence_data$sentiment <- factor(tweet_sentence_data$sentiment)
+tweet_sentence_data$sentiment2 <- relevel(tweet_sentence_data$sentiment, ref = "-1")
+model_1 <- nnet::multinom(sentiment ~ statuses_count + followers_count + favourites_count + friends_count + word_count, data = tweet_sentence_data)
+summary(model_1)
+```
+
+```{r}
+z <- summary(model_1)$coefficients/summary(model_1)$standard.errors
+print("z-score:")
+z
+```
+```{r}
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+print("p-value:")
+p
+```

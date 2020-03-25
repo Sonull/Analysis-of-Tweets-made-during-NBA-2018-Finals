@@ -68,12 +68,15 @@ write.graph(net, file=graphml_file, format="graphml")
 ######################################################
 #out_degree
 out_degree <- degree(net, mode="out")
+head(sort(out_degree,decreasing=TRUE))
+tail(sort(out_degree,decreasing=TRUE))
 hist(out_degree, col='purple',ylab='Frequency', main="Histogram of out-degree")
 
 in_degree <- degree(net, mode="in")
+head(sort(in_degree,decreasing=TRUE))
 #plotting it on a graph
 hist(in_degree, col='purple',ylab='Frequency', main="Histogram of in-degree")
-
+in_degree
 #all_degrees
 all_degree <- degree(net, mode="all")
 #plotting it on a graph
@@ -124,7 +127,8 @@ head(ecentrality)
 # Betweenness (centrality based on a broker position connecting others)
 # (Number of geodesics that pass through the node or the edge)
 between <- betweenness(net, directed=T, weights=NA)
-head(between,15)
+between
+head(between)
 
 ebetween <- edge_betweenness(net, directed=T, weights=NA)
 head(ebetween,15)
